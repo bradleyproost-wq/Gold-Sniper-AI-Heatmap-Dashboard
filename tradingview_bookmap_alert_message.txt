@@ -1,0 +1,1 @@
+{"key":"GOLD_SNIPER_VIP_SN","type":"BOOKMAP_ORDERFLOW","signal":"{{strategy.order.action}}","symbol":"{{ticker}}","tf":"{{interval}}","price":{{close}},"score":"BOOKMAP","heatmap":"ORDERFLOW"}

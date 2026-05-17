@@ -1,0 +1,5 @@
+# 1) Store Bookmap latest
+curl -X POST "https://YOUR-APP.up.railway.app/webhook/bookmap?key=GOLD_SNIPER_VIP_SN" -H "Content-Type: application/json" -d "{\"type\":\"BOOKMAP_ORDERFLOW\",\"signal\":\"BUY\",\"symbol\":\"XAUUSD\",\"tf\":\"H1\",\"price\":2350.40,\"score\":\"BUY\",\"heatmap\":\"BUY FLOW\"}"
+
+# 2) Send trade signal to Discord with latest Bookmap
+curl -X POST "https://YOUR-APP.up.railway.app/webhook/signal?key=GOLD_SNIPER_VIP_SN" -H "Content-Type: application/json" -d "{\"signal\":\"BUY\",\"side\":\"BUY\",\"symbol\":\"XAUUSD\",\"timeframe\":\"H1\",\"signal_id\":\"BUY_TEST_001\",\"entry\":2351.25,\"sl\":2345,\"tp1\":2356,\"tp2\":2363,\"tp3\":2375}"
