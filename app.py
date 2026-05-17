@@ -1,143 +1,80 @@
-from flask import Flask, jsonify, request, render_template
-from flask_cors import CORS
-import time, random, math, os
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Gold Sniper AI Heatmap Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><span class="crosshair">◎</span> GOLD SNIPER <b>AI</b></div>
+      <select id="symbol"><option>XAUUSD</option><option>GC Futures</option><option>BTCUSDT</option></select>
+      <nav><button class="active">M1</button><button>M5</button><button>M15</button><button>M30</button><button>H1</button><button>H4</button><button>D1</button></nav>
+      <div class="topinfo"><span class="dot"></span> Server: <b id="server">Singapore (SG)</b></div>
+      <div class="topinfo">Latency: <b class="green" id="latency">18ms</b></div>
+      <div class="topinfo" id="clock">09:40:21 (UTC+7)</div>
+    </header>
 
-app = Flask(__name__)
-CORS(app)
+    <main class="grid">
+      <aside class="left">
+        <div class="card signal"><small>AI SIGNAL</small><h1 id="signal">BUY</h1><div class="arrow">↑</div></div>
+        <div class="card"><small>CONFIDENCE</small><h2 id="confidence">85%</h2><div class="bar"><i id="confbar"></i></div></div>
+        <div class="card"><small>REASON</small><ul id="reason"></ul></div>
+        <div class="card"><small>AI SCORE</small><h2><span id="score">85</span> / 100</h2><div class="bar"><i id="scorebar"></i></div></div>
+        <div class="card"><small>MARKET BIAS</small><h2 class="green" id="bias">BULLISH 🐂</h2></div>
+        <div class="card"><small>VOLATILITY</small><h3 class="yellow" id="volatility">MEDIUM</h3></div>
+        <div class="card"><small>SPREAD</small><h2 id="spread">0.28</h2></div>
+        <div class="card"><small>CONNECTION</small><p>OKX WebSocket <span class="dot right"></span><br>Connected</p></div>
+      </aside>
 
-STATE = {
-    "symbol": "XAUUSD",
-    "timeframe": "M1",
-    "price": 2467.48,
-    "signal": "BUY",
-    "score": 85,
-    "confidence": 85,
-    "market_bias": "BULLISH",
-    "volatility": "MEDIUM",
-    "spread": 0.28,
-    "fake_breakout": False,
-    "server": "Singapore (SG)",
-    "latency_ms": 18,
-    "heatmap": "BUY_LIQUIDITY",
-    "reason": [
-        "Liquidity Buy Wall",
-        "Bullish Imbalance",
-        "Sweep Liquidity",
-        "Trend Alignment (H1)"
-    ],
-    "updated": int(time.time())
-}
+      <section class="center">
+        <div class="chart-card">
+          <div class="chart-head">
+            <div><b id="chart-symbol">XAUUSD</b> ▾ · <b>M1</b></div>
+            <div class="ohlc">O <span id="o"></span> H <span id="h"></span> L <span id="l"></span> C <span id="c"></span> <b class="green">+0.23 (+0.01%)</b></div>
+          </div>
+          <canvas id="mainChart"></canvas>
+        </div>
 
-def make_candles(n=85, base=2465.0):
-    out = []
-    price = base
-    for i in range(n):
-        drift = math.sin(i / 9) * 0.25 + random.uniform(-0.24, 0.32)
-        o = price
-        c = price + drift
-        h = max(o, c) + random.uniform(0.05, 0.55)
-        l = min(o, c) - random.uniform(0.05, 0.55)
-        price = c
-        out.append({
-            "t": i,
-            "o": round(o, 2),
-            "h": round(h, 2),
-            "l": round(l, 2),
-            "c": round(c, 2),
-            "v": random.randint(20, 180)
-        })
-    # last candles align with state price
-    diff = STATE["price"] - out[-1]["c"]
-    for x in out:
-        for k in ["o","h","l","c"]:
-            x[k] = round(x[k] + diff, 2)
-    return out
+        <div class="bottom-grid">
+          <div class="card big"><small>LIQUIDITY HEATMAP (3D)</small><canvas id="miniHeat"></canvas></div>
+          <div class="card big"><small>CUMULATIVE DELTA</small><h2 class="green" id="delta">+2,845</h2><canvas id="deltaChart"></canvas></div>
+          <div class="card big"><small>VOLUME PROFILE</small><canvas id="profileChart"></canvas></div>
+        </div>
+      </section>
 
-def make_heatmap():
-    levels = []
-    price = STATE["price"]
-    for i in range(-18, 19):
-        p = round(price + i * 0.12, 2)
-        dist = abs(i)
-        strength = max(5, 100 - dist * 5 + random.randint(-15, 25))
-        if i in [-10, -9, -8, -7, 6, 7, 8]:
-            strength += 80
-        side = "buy" if i < 0 else "sell"
-        levels.append({"price": p, "strength": min(100, strength), "side": side})
-    return levels
+      <aside class="right-panel">
+        <div class="card orderbook">
+          <div class="tabs"><b>ORDER BOOK (OKX)</b><span>DEPTH</span><span class="active">DOM</span></div>
+          <table><thead><tr><th>Price</th><th>Size</th><th>Bid</th><th>Ask</th></tr></thead><tbody id="book"></tbody></table>
+          <div class="book-stats"><div>Imbalance<br><b class="green" id="imbalance">+65%</b></div><div>Buy Pressure<br><b class="green">STRONG</b></div><div>Liquidity<br><b class="green">HIGH</b></div></div>
+        </div>
+        <div class="row2">
+          <div class="card trades"><small>TRADES FLOW <b class="green" id="delta2"></b></small><table><tbody id="trades"></tbody></table></div>
+          <div class="card"><small>AI LIQUIDITY MAP</small>
+            <div class="zone green-border"><small>Nearest Buy Wall</small><b id="buywall"></b><br><span>Strength: STRONG</span></div>
+            <div class="zone red-border"><small>Nearest Sell Wall</small><b id="sellwall"></b><br><span>Strength: MEDIUM</span></div>
+            <div class="zone blue-border"><small>Liquidity Sweep Zone</small><b id="sweep"></b><br><span>Status: CLEAN</span></div>
+            <div class="zone yellow-border"><small>Fake Breakout</small><b id="fake">FALSE</b><br><span>Status: FILTER ACTIVE</span></div>
+          </div>
+        </div>
+      </aside>
+    </main>
 
-def make_orderbook():
-    price = STATE["price"]
-    asks, bids = [], []
-    for i in range(1, 11):
-        asks.append({"price": round(price + i * 0.05, 2), "size": round(random.uniform(18, 95), 1)})
-        bids.append({"price": round(price - i * 0.05, 2), "size": round(random.uniform(22, 110), 1)})
-    return {"asks": asks[::-1], "bids": bids}
-
-def make_trades():
-    trades = []
-    price = STATE["price"]
-    for i in range(18):
-        side = "Buy" if random.random() > 0.43 else "Sell"
-        trades.append({
-            "time": time.strftime("%H:%M:%S", time.localtime(time.time()-i)),
-            "price": round(price + random.uniform(-0.25,0.25), 2),
-            "size": round(random.uniform(0.2, 2.8), 2),
-            "side": side
-        })
-    return trades
-
-@app.route("/")
-def index():
-    return render_template("index.html")
-
-@app.route("/health")
-def health():
-    return jsonify({"ok": True, "status": "ONLINE", "ts": int(time.time())})
-
-@app.route("/api/state")
-def api_state():
-    STATE["latency_ms"] = random.randint(12, 31)
-    STATE["updated"] = int(time.time())
-    payload = dict(STATE)
-    payload["candles"] = make_candles(base=STATE["price"]-2.8)
-    payload["heatmap_levels"] = make_heatmap()
-    payload["orderbook"] = make_orderbook()
-    payload["trades"] = make_trades()
-    payload["delta"] = random.randint(900, 3800)
-    payload["imbalance"] = random.randint(45, 76)
-    payload["buy_wall"] = f"{STATE['price']-0.78:.2f} - {STATE['price']-0.62:.2f}"
-    payload["sell_wall"] = f"{STATE['price']+0.62:.2f} - {STATE['price']+0.78:.2f}"
-    payload["sweep_zone"] = f"{STATE['price']-0.88:.2f} - {STATE['price']-0.58:.2f}"
-    return jsonify(payload)
-
-@app.route("/api/market", methods=["POST"])
-@app.route("/webhook", methods=["POST"])
-def update_market():
-    data = request.get_json(silent=True) or {}
-    for k in ["symbol", "timeframe", "price", "signal", "score", "confidence", "market_bias", "volatility", "spread", "fake_breakout", "heatmap"]:
-        if k in data:
-            STATE[k] = data[k]
-    if "reason" in data and isinstance(data["reason"], list):
-        STATE["reason"] = data["reason"]
-    STATE["updated"] = int(time.time())
-    return jsonify({"ok": True, "state": STATE})
-
-@app.route("/api/ea_signal")
-def ea_signal():
-    sig = STATE["signal"]
-    if STATE.get("fake_breakout") or int(STATE.get("score", 0)) < 70:
-        sig = "WAIT"
-    return jsonify({
-        "ok": True,
-        "symbol": STATE["symbol"],
-        "signal": sig,
-        "score": STATE["score"],
-        "heatmap": STATE["heatmap"],
-        "fake_breakout": STATE["fake_breakout"],
-        "reason": STATE["reason"],
-        "signal_id": f"GS_HEATMAP_{STATE['updated']}"
-    })
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True)
+    <footer>
+      <div><small>ACCOUNT</small><b>GoldSniper-MT4</b></div>
+      <div><small>BALANCE</small><b>10,254.62 USD</b></div>
+      <div><small>EQUITY</small><b>10,254.62 USD</b></div>
+      <div><small>FREE MARGIN</small><b>9,782.11 USD</b></div>
+      <div><small>RISK</small><b>1.00%</b></div>
+      <div><small>LOT SIZE</small><b>0.10</b></div>
+      <button class="auto">AUTO TRADING <b>ON ●</b></button>
+      <button>PENDING ORDERS (2)</button>
+      <button>POSITIONS (1)</button>
+    </footer>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
