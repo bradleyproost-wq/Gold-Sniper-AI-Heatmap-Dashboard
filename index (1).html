@@ -1,0 +1,149 @@
+from flask import Flask, jsonify, request, send_from_directory, Response
+from flask_cors import CORS
+import os
+import random
+import time
+
+app = Flask(__name__, static_folder="static")
+CORS(app)
+
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+STATE = {
+    "symbol": "XAUUSD",
+    "price": 4537.80,
+    "signal": "WAIT",
+    "score": 50,
+    "confidence": 50,
+    "market_bias": "NEUTRAL",
+    "volatility": "MEDIUM",
+    "spread": 0.28,
+    "latency_ms": 18,
+    "server": "Render",
+    "delta": 2845,
+    "imbalance": 65,
+    "buy_wall": "4536.90",
+    "sell_wall": "4538.50",
+    "sweep_zone": "4537.10 - 4537.30",
+    "fake_breakout": False,
+    "reason": ["Dashboard online", "Waiting for market signal", "Webhook ready"],
+    "candles": [],
+    "heatmap_levels": [],
+    "orderbook": {"asks": [], "bids": []},
+    "trades": []
+}
+
+
+def build_market():
+    base_price = float(STATE.get("price", 4537.80))
+    base_price = round(base_price + random.uniform(-0.35, 0.35), 2)
+    STATE["price"] = base_price
+
+    candles = []
+    p = base_price
+
+    for _ in range(60):
+        o = round(p + random.uniform(-1.0, 1.0), 2)
+        c = round(o + random.uniform(-1.5, 1.5), 2)
+        h = round(max(o, c) + random.uniform(0.1, 1.0), 2)
+        l = round(min(o, c) - random.uniform(0.1, 1.0), 2)
+        v = random.randint(10, 80)
+        candles.append({"o": o, "h": h, "l": l, "c": c, "v": v})
+        p = c
+
+    STATE["candles"] = candles
+    STATE["heatmap_levels"] = [
+        {"price": round(base_price + random.uniform(-5, 5), 2), "strength": random.randint(20, 100)}
+        for _ in range(14)
+    ]
+    STATE["orderbook"] = {
+        "asks": [{"price": round(base_price + i * 0.1, 2), "size": random.randint(5, 50)} for i in range(1, 8)],
+        "bids": [{"price": round(base_price - i * 0.1, 2), "size": random.randint(5, 50)} for i in range(1, 8)]
+    }
+    STATE["trades"] = [
+        {
+            "time": time.strftime("%H:%M:%S"),
+            "price": round(base_price + random.uniform(-1, 1), 2),
+            "size": round(random.uniform(0.1, 5), 2),
+            "side": random.choice(["Buy", "Sell"])
+        }
+        for _ in range(12)
+    ]
+
+
+@app.route("/")
+def home():
+    root_index = os.path.join(ROOT_DIR, "index.html")
+    template_index = os.path.join(ROOT_DIR, "templates", "index.html")
+
+    if os.path.exists(root_index):
+        return send_from_directory(ROOT_DIR, "index.html")
+
+    if os.path.exists(template_index):
+        return send_from_directory(os.path.join(ROOT_DIR, "templates"), "index.html")
+
+    return Response("index.html not found", status=500)
+
+
+@app.route("/static/<path:filename>")
+def static_files(filename):
+    return send_from_directory(os.path.join(ROOT_DIR, "static"), filename)
+
+
+@app.route("/health")
+def health():
+    return jsonify({"ok": True, "status": "online", "service": "gold-sniper-ai-heatmap"})
+
+
+@app.route("/api/state")
+def api_state():
+    build_market()
+    return jsonify(STATE)
+
+
+@app.route("/api/market", methods=["POST"])
+def api_market():
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"ok": False, "error": "missing json"}), 400
+
+    STATE.update(data)
+    return jsonify({"ok": True, "updated": True})
+
+
+@app.route("/webhook", methods=["GET", "POST"])
+def webhook():
+    if request.method == "GET":
+        return jsonify({"ok": True, "message": "webhook ready. use POST json."})
+
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"ok": False, "error": "missing payload"}), 400
+
+    signal = str(data.get("signal", data.get("side", "WAIT"))).upper()
+
+    STATE["signal"] = signal
+    STATE["score"] = int(data.get("score", STATE.get("score", 50)))
+    STATE["confidence"] = int(data.get("confidence", data.get("winrate", STATE.get("confidence", 50))))
+    STATE["price"] = float(data.get("price", data.get("entry", STATE.get("price", 4537.80))))
+
+    if signal == "BUY":
+        STATE["market_bias"] = "BULLISH"
+    elif signal == "SELL":
+        STATE["market_bias"] = "BEARISH"
+    else:
+        STATE["market_bias"] = "NEUTRAL"
+
+    STATE["reason"] = [f"Webhook received: {signal}", f"Score: {STATE['score']}", "Dashboard updated"]
+
+    return jsonify({"ok": True, "signal": signal, "score": STATE["score"]})
+
+
+@app.errorhandler(Exception)
+def handle_error(error):
+    return jsonify({"ok": False, "error": str(error), "type": error.__class__.__name__}), 500
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", "10000"))
+    app.run(host="0.0.0.0", port=port)
